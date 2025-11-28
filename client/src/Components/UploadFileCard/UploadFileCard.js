@@ -1,125 +1,55 @@
-// lib imports
-import React, { useCallback, useState } from "react";
-import PropTypes from "prop-types";
-import Card from "react-bootstrap/Card";
-import Row from "react-bootstrap/Row";
-import Col from "react-bootstrap/Col";
-import InputGroup from "react-bootstrap/InputGroup";
-import Button from "react-bootstrap/Button";
-import FormControl from "react-bootstrap/FormControl";
-import InputFiles from "react-input-files";
+import React, { useState, useCallback } from "react";
 import ss from "socket.io-stream";
-import DownloadProgressBar from "../DownloadProgressBar/DownloadProgressBar";
 
-const UploadFileCard = props => {
-  const { lobbyNumber, socket } = props;
-  const lobbyNumberText = "Lobby: #" + lobbyNumber;
-  const [currentFile, setCurrentFile] = useState({});
-  const [uploadedFileSize, setUploaddedFileSize] = useState(0);
-  const [canUploadFile, setCanUploadFile] = useState(true);
+const UploadFileCard = ({ lobbyNumber, socket }) => {
+  const [file, setFile] = useState(null);
+  const [pct, setPct] = useState(0);
+  const [status, setStatus] = useState("");
 
-  const onFileChange = useCallback(files => setCurrentFile(files[0]), []);
-  const sendFile = useCallback(() => {
-    // disable buttons
-    setCanUploadFile(false);
+  const choose = e => setFile(e.target.files[0]);
+
+  const upload = useCallback(() => {
+    if (!file) return alert("Choose a file");
+    if (!socket) return alert("Socket not ready");
 
     const stream = ss.createStream();
-    ss(socket).emit("file-upload", stream, {
-      size: currentFile.size,
-      name: currentFile.name
-    });
-    // use blob
-    const blobStream = ss.createBlobReadStream(currentFile);
+    const blobStream = ss.createBlobReadStream(file);
 
+    let sent = 0;
     blobStream.on("data", chunk => {
-      setUploaddedFileSize(size => {
-        const totalSize = size + chunk.length;
-        // send progress to every user in the room
-        const percentage = Math.floor((totalSize / currentFile.size) * 100);
-        socket.emit("file-upload-progress", percentage);
-        return totalSize;
-      });
+      sent += chunk.length;
+      const percent = Math.round((sent / file.size) * 100);
+      setPct(percent);
+      // optional: also inform server (server will broadcast)
+      socket.emit("file-upload-progress", percent);
     });
 
-    ss.createBlobReadStream(currentFile).pipe(stream);
-  }, [currentFile, socket]);
+    blobStream.on("end", () => {
+      setStatus("Upload finished, waiting server...");
+      setPct(100);
+    });
 
-  //
-  const uploadPercentage = Math.floor(
-    (uploadedFileSize / currentFile.size) * 100
-  );
+    ss(socket).emit("file-upload", stream, { name: file.name, size: file.size });
+    blobStream.pipe(stream);
+
+    setStatus("Uploading...");
+  }, [file, socket]);
 
   return (
-    <Card style={cardStyle}>
-      <Card.Body>
-        <Card.Title>{lobbyNumberText}</Card.Title>
-        <Card.Subtitle className="mb-2 text-muted font-italic">
-          Click to add your file (one file per upload)
-        </Card.Subtitle>
-        <hr />
-        <div>
-          {currentFile && currentFile.name ? (
-            <InputGroup className="mb-3">
-              <FormControl
-                placeholder={currentFile.name}
-                aria-label={currentFile.name}
-                aria-describedby="file"
-                disabled={true}
-              />
-              <InputGroup.Append>
-                <Button
-                  variant="outline-secondary"
-                  onClick={sendFile}
-                  disabled={!canUploadFile}
-                >
-                  Send
-                </Button>
-              </InputGroup.Append>
-            </InputGroup>
-          ) : null}
-          {/* ıf the file is getting uploaded */}
-          {uploadPercentage > 0 ? (
-            <DownloadProgressBar percentage={uploadPercentage} />
-          ) : null}
-          <Row>
-            <Col />
-
-            <Col style={colStyle}>
-              {canUploadFile ? (
-                <InputFiles onChange={onFileChange}>
-                  <span style={plusStyle}>+</span>
-                </InputFiles>
-              ) : null}
-            </Col>
-            <Col />
-          </Row>
+    <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
+      <h4>Upload File (Host)</h4>
+      <input type="file" onChange={choose} />
+      <div style={{ marginTop: 8 }}>
+        <button onClick={upload} disabled={!file || !socket}>Upload</button>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ width: "100%", background: "#eee", height: 10, borderRadius: 6 }}>
+          <div style={{ width: `${pct}%`, background: "#4caf50", height: "100%", borderRadius: 6 }} />
         </div>
-      </Card.Body>
-    </Card>
+        <div style={{ marginTop: 6 }}>{pct}% - {status}</div>
+      </div>
+    </div>
   );
-};
-
-const cardStyle = {
-  marginTop: "20px",
-  minHeight: "25vh"
-};
-
-const colStyle = {
-  textAlign: "center"
-};
-
-const plusStyle = {
-  fontSize: "4rem",
-  color: "#ff6a6c",
-  cursor: "pointer"
-};
-
-UploadFileCard.propTypes = {
-  lobbyNumber: PropTypes.number.isRequired,
-  socket: PropTypes.shape({
-    on: PropTypes.func.isRequired,
-    emit: PropTypes.func.isRequired
-  })
 };
 
 export default UploadFileCard;

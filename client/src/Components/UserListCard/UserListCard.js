@@ -1,63 +1,20 @@
-// lib imports
-import React, { useState, useEffect } from "react";
-import PropTypes from "prop-types";
-import Card from "react-bootstrap/Card";
-import ListGroup from "react-bootstrap/ListGroup";
+import React from "react";
 
-const UserListCard = props => {
-  const [users, setUsers] = useState([]);
-  const { socket } = props;
-
-  useEffect(() => {
-    // add listener for users if there is a socket
-    if (!socket) return;
-
-    socket.on("lobby-user-info", data => {
-      setUsers(data.usersInLobby);
-    });
-
-    return () => {
-      socket.removeAllListeners("lobby-user-info");
-    };
-  }, [socket]);
-
-  let userJsx = users.map(userId => (
-    <ListGroup.Item key={userId}>
-      {userId === socket.id.split("#")[1] ? "You" : "User#" + userId}
-    </ListGroup.Item>
-  ));
-
-  userJsx = userJsx.length ? (
-    userJsx
-  ) : (
-    <span className="font-italic text-muted">
-      Currently, there are no users in your lobby
-    </span>
-  );
-
+const UserListCard = ({ users = [], mySocketId }) => {
+  const myShort = mySocketId ? mySocketId.split("#")[1] || mySocketId : null;
   return (
-    <Card style={cardStyle}>
-      <Card.Body>
-        <Card.Title>Users in the Lobby:</Card.Title>
-        <hr />
-        <div>
-          <ListGroup>{userJsx}</ListGroup>
-        </div>
-      </Card.Body>
-    </Card>
+    <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
+      <h4>Users in Lobby</h4>
+      {users.length === 0 ? <div>Currently, there are no users in your lobby</div> : (
+        <ul>
+          {users.map(u => {
+            const short = (u && u.includes("#")) ? u.split("#")[1] : u;
+            return <li key={u}>{short}{short === myShort ? " (you)" : ""}</li>;
+          })}
+        </ul>
+      )}
+    </div>
   );
-};
-
-const cardStyle = {
-  marginTop: "20px",
-  minHeight: "25vh"
-};
-
-UserListCard.propTypes = {
-  socket: PropTypes.shape({
-    on: PropTypes.func.isRequired,
-    emit: PropTypes.func.isRequired
-  })
 };
 
 export default UserListCard;

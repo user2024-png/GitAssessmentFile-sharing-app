@@ -1,74 +1,51 @@
 const { http } = require("../serverConfig");
-const io = require("socket.io")(http);
+const io = require("socket.io")(http, {
+  maxHttpBufferSize: 100 * 1024 * 1024 // allow uploads up to 100MB
+});
 const ss = require("socket.io-stream");
 const path = require("path");
 const fs = require("fs");
 const util = require("util");
 
-// promisified methods
 const unlink = util.promisify(fs.unlink);
 const readdir = util.promisify(fs.readdir);
-const rmdir = util.promisify(fs.rmdir);
 
-// store the socket lobbys
+// store namespaces to avoid duplicates
 const socketLobbies = new Map();
+
+// ensure /temporary exists
+const BASE_TMP = path.join(__dirname, "..", "temporary");
+if (!fs.existsSync(BASE_TMP)) {
+  fs.mkdirSync(BASE_TMP, { recursive: true });
+}
 
 class SocketLobby {
   constructor(lobbyNum = Date.now()) {
     this._lobbyNum = lobbyNum;
-    this._lobby = io.of("/lobby-" + this._lobbyNum);
-    this._usersInLobby = [];
 
-    // push to the socketlobbys
-    // do not pollute the scope
-    {
-      const { _lobby } = this;
-      socketLobbies.set(lobbyNum, _lobby);
+    // avoid duplicate namespace
+    if (socketLobbies.has(lobbyNum)) {
+      console.log(`[SocketLobby] Namespace already exists: /lobby-${lobbyNum}`);
+      return socketLobbies.get(lobbyNum);
     }
 
-    this._lobby.on("connection", socket => {
-      // add user to list
-      this._addUserToLobby(socket);
-      // emit lobby information
-      this._sendLobbyInformation();
-      // handle disconnections
-      this._handleDisconnections(socket);
-      // hanle upload percentage
-      this._handleUploadProgress(socket);
+    this._lobby = io.of("/lobby-" + this._lobbyNum);
+    this._users = [];
+    this.file = ""; // ⭐ IMPORTANT → client expects "file", NOT "fileName"
 
-      /*
-      TODO & NOTE:
-      In the future rather than saving the file and download
-      I will implement two way streaming which will enable
-      us to download at the same time with upload
-      
-      */
+    socketLobbies.set(lobbyNum, this._lobby);
 
-      // get file and save
-      ss(socket).on("file-upload", (stream, data) => {
-        const fileName = path.basename(data.name);
-        this.fileName = fileName;
+    console.log(`[SocketLobby] Namespace created: /lobby-${this._lobbyNum}`);
 
-        let writeStreamPath =
-          __dirname + "/../temporary/lobby-" + lobbyNum + "/";
+    this._lobby.on("connection", (socket) => {
+      console.log(`[SocketLobby:${this._lobbyNum}] socket connected: ${socket.id}`);
 
-        // create the path
-        fs.mkdirSync(writeStreamPath, { recursive: true });
+      this._addUser(socket);
+      this._broadcastLobbyInfo();
 
-        writeStreamPath += fileName;
-
-        // save files under a specific room file
-        const socketStream = fs.createWriteStream(writeStreamPath);
-
-        stream.on("end", () => {
-          // let the client side know that the file is ready to download
-          this._lobby.emit("file-download-end", { fileName });
-          // remove files after 30 minutes
-          this._removeFile(fileName);
-        });
-
-        stream.pipe(socketStream);
-      });
+      this._handleDisconnect(socket);
+      this._handleProgress(socket);
+      this._handleFileUpload(socket);
     });
   }
 
@@ -76,53 +53,102 @@ class SocketLobby {
     return this._lobbyNum;
   }
 
-  // Private methods
+  // -------------------------------
+  // Handle file upload
+  // -------------------------------
+  _handleFileUpload(socket) {
+    ss(socket).on("file-upload", (stream, data) => {
+      const fileName = path.basename(data.name);
+      this.file = fileName; // ⭐ client expects this field
 
-  _handleUploadProgress(socket) {
-    const prgs = "file-upload-progress";
-    socket.on(prgs, data => this._lobby.emit(prgs, data));
-  }
+      const folder = path.join(BASE_TMP, "lobby-" + this._lobbyNum);
 
-  _handleDisconnections(socket) {
-    socket.on("disconnect", () => {
-      const socketId = socket.id.split("#")[1];
-      this._usersInLobby = this._usersInLobby.filter(
-        userId => userId !== socketId
-      );
+      if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
 
-      // remove listeners
-      socket.removeAllListeners("file-upload-progress");
-      ss(socket).removeAllListeners("file-upload");
+      const destPath = path.join(folder, fileName);
+      console.log(`[SocketLobby:${this._lobbyNum}] Uploading: ${destPath}`);
 
-      this._sendLobbyInformation();
+      const writeStream = fs.createWriteStream(destPath);
+      stream.pipe(writeStream);
+
+      stream.on("end", () => {
+        console.log(`[SocketLobby:${this._lobbyNum}] File "${fileName}" uploaded.`);
+
+        this._lobby.emit("file-ready", { file: fileName }); // ⭐ matching client
+        this._broadcastLobbyInfo(); // also update lobby
+
+        this._cleanupLater(fileName);
+      });
+
+      stream.on("error", (err) => {
+        console.error(`[SocketLobby:${this._lobbyNum}] Stream error:`, err);
+      });
     });
   }
 
-  _sendLobbyInformation() {
-    const { fileName = "", _usersInLobby } = this;
-    this._lobby.emit("lobby-file-info", { fileName });
-    this._lobby.emit("lobby-user-info", { usersInLobby: _usersInLobby });
+  // -------------------------------
+  // Progress
+  // -------------------------------
+  _handleProgress(socket) {
+    socket.on("file-upload-progress", (pct) => {
+      this._lobby.emit("file-upload-progress", pct);
+    });
   }
 
-  _addUserToLobby(socket) {
-    this._usersInLobby.push(socket.id.split("#")[1]);
+  // -------------------------------
+  // Connect / Disconnect handling
+  // -------------------------------
+  _addUser(socket) {
+    this._users.push(socket.id);
+    console.log(`[SocketLobby:${this._lobbyNum}] Users: ${this._users.length}`);
   }
 
-  _removeFile(fileName) {
-    setTimeout(() => {
-      const filePath =
-        __dirname + "/../temporary/lobby-" + this._lobbyNum + "/";
-
-      unlink(filePath + fileName)
-        .then(() => readdir(filePath))
-        .then(files => {
-          if (!files.length) return fs.rmdir(filePath);
-        });
-    }, 1000 * 60 * 30);
+  _handleDisconnect(socket) {
+    socket.on("disconnect", () => {
+      this._users = this._users.filter((u) => u !== socket.id);
+      console.log(`[SocketLobby:${this._lobbyNum}] Disconnected: ${socket.id}`);
+      this._broadcastLobbyInfo();
+    });
   }
 
-  // TODO need to remove rooms when everyone has left
+  // -------------------------------
+  // Send lobby-info (client expects "file")
+  // -------------------------------
+  _broadcastLobbyInfo() {
+    this._lobby.emit("lobby-info", {
+      users: this._users,
+      file: this.file || "" // ⭐ correct field name
+    });
+
+    console.log(
+      `[SocketLobby:${this._lobbyNum}] lobby-info → users=${this._users.length}, file=${this.file}`
+    );
+  }
+
+  // -------------------------------
+  // Cleanup
+  // -------------------------------
+  _cleanupLater(fileName) {
+    const folder = path.join(BASE_TMP, "lobby-" + this._lobbyNum);
+    const filePath = path.join(folder, fileName);
+
+    setTimeout(async () => {
+      try {
+        if (fs.existsSync(filePath)) {
+          await unlink(filePath);
+          console.log(`[SocketLobby:${this._lobbyNum}] Deleted file: ${fileName}`);
+        }
+
+        const files = await readdir(folder);
+        if (files.length === 0) {
+          fs.rmSync(folder, { recursive: true, force: true });
+          console.log(`[SocketLobby:${this._lobbyNum}] Deleted empty folder.`);
+        }
+      } catch (err) {
+        console.error(`[SocketLobby:${this._lobbyNum}] Cleanup error`, err);
+      }
+    }, 30 * 60 * 1000);
+  }
 }
 
-// just to run it
 module.exports = SocketLobby;

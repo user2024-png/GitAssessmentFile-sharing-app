@@ -1,94 +1,50 @@
-// lib imports
-import React, { useEffect, useState, useCallback } from "react";
-import PropTypes from "prop-types";
-import Card from "react-bootstrap/Card";
-import InputGroup from "react-bootstrap/InputGroup";
-import FormControl from "react-bootstrap/FormControl";
-import Button from "react-bootstrap/Button";
+import React, { useEffect, useState } from "react";
 
-// component imports
-import DownloadProgressBar from "../DownloadProgressBar/DownloadProgressBar";
-
-const DownloadFileCard = props => {
-  const [currentFileInformation, setCurrentFileInformation] = useState(null);
-  const [uploadPercentage, setUploadPercentage] = useState(0);
-  const { lobbyNumber, socket, joinedToLobby } = props;
-  const lobbyNumberText = "Lobby: #" + lobbyNumber;
+const DownloadFileCard = ({ lobbyNumber, socket, joinedToLobby }) => {
+  const [curFile, setCurFile] = useState(null);
+  const [pct, setPct] = useState(0);
 
   useEffect(() => {
-    // if the user is not the sender (receiver)
-    // set an on download event
-    if (!joinedToLobby || !socket) return;
+    if (!socket) return;
+    const onEnd = ({ fileName }) => { setCurFile(fileName); setPct(100); };
+    const onInfo = ({ file }) => { if (file) setCurFile(file); };
+    const onProg = n => setPct(n || 0);
 
-    socket.on("file-download-end", data => {
-      setCurrentFileInformation(data);
-    });
-
-    socket.on("lobby-file-info", data => {
-      if (data.fileName) setCurrentFileInformation(data);
-    });
-
-    socket.on("file-upload-progress", data => setUploadPercentage(data));
+    socket.on("file-download-end", onEnd);
+    socket.on("lobby-info", onInfo);
+    socket.on("file-upload-progress", onProg);
 
     return () => {
-      socket.removeAllListeners("file-event-end");
-      socket.removeAllListeners("lobby-file-info");
-      socket.removeAllListeners("file-upload-progess");
+      socket.off("file-download-end", onEnd);
+      socket.off("lobby-info", onInfo);
+      socket.off("file-upload-progress", onProg);
     };
+  }, [socket]);
 
-    // set an event to fetch current content
-  }, [joinedToLobby, socket]);
-
-  const downloadFile = useCallback(() => {
-    window.open(
-      "/lobby/" + lobbyNumber + "/download/" + currentFileInformation.fileName
-    );
-  }, [currentFileInformation, lobbyNumber]);
+  const download = () => {
+    if (!curFile || !lobbyNumber) return;
+    const url = `${window.location.origin}/lobby/${lobbyNumber}/download/${encodeURIComponent(curFile)}`;
+    window.open(url, "_blank");
+  };
 
   return (
-    <Card style={cardStyle}>
-      <Card.Body>
-        <Card.Title>{lobbyNumberText}</Card.Title>
-        <Card.Subtitle className="mb-2 text-muted font-italic">
-          Please wait until the file is fully uploaded
-        </Card.Subtitle>
-        <hr />
-        <div>
-          {currentFileInformation ? (
-            <InputGroup className="mb-3">
-              <FormControl
-                placeholder={currentFileInformation.fileName}
-                aria-label={currentFileInformation.fileName}
-                aria-describedby="file"
-                disabled={true}
-              />
-              <InputGroup.Append>
-                <Button variant="outline-secondary" onClick={downloadFile}>
-                  Download
-                </Button>
-              </InputGroup.Append>
-            </InputGroup>
-          ) : (
-            <DownloadProgressBar percentage={uploadPercentage} />
-          )}
+    <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, marginTop: 12 }}>
+      <h4>Receive files</h4>
+      {curFile ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>{curFile}</div>
+          <button onClick={download}>Download</button>
         </div>
-      </Card.Body>
-    </Card>
+      ) : (
+        <div>
+          <div style={{ width: "100%", background: "#eee", height: 10, borderRadius: 6 }}>
+            <div style={{ width: `${pct}%`, background: "#2196f3", height: "100%", borderRadius: 6 }} />
+          </div>
+          <div style={{ marginTop: 6 }}>{pct}%</div>
+        </div>
+      )}
+    </div>
   );
-};
-
-const cardStyle = {
-  marginTop: "20px",
-  minHeight: "25vh"
-};
-
-DownloadFileCard.propTypes = {
-  lobbyNumber: PropTypes.number.isRequired,
-  joinedToLobby: PropTypes.bool.isRequired,
-  socket: PropTypes.shape({
-    on: PropTypes.func.isRequired,
-    emit: PropTypes.func.isRequired
-  })
 };
 
 export default DownloadFileCard;

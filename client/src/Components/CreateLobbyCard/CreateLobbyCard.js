@@ -1,67 +1,28 @@
-// lib imports
 import React, { useCallback } from "react";
-import PropTypes from "prop-types";
 import axios from "axios";
-import Card from "react-bootstrap/Card";
-import Row from "react-bootstrap/Row";
-import Col from "react-bootstrap/Col";
 
-const CreateLobbyCard = props => {
-  const { setLobbyNum } = props;
-
+const CreateLobbyCard = ({ setLobbyNum, setJoinedToLobby }) => {
   const createLobby = useCallback(() => {
-    axios
-      .get("/create-lobby")
-      .then(res => res.data)
+    axios.get("/create-lobby")
+      .then(r => r.data)
       .then(data => {
         if (data.lobbyNum) {
           setLobbyNum(data.lobbyNum);
+          setJoinedToLobby(true);
         }
+      }).catch(err => {
+        console.error("create-lobby error", err);
+        alert("Could not create lobby");
       });
-    // then set hasCreated
-  }, [setLobbyNum]);
+  }, [setLobbyNum, setJoinedToLobby]);
 
   return (
-    <Card style={cardStyle}>
-      <Card.Body>
-        <Card.Title>Create Lobby</Card.Title>
-        <Card.Subtitle className="mb-2 text-muted font-italic">
-          You can share your files with other users in the lobby
-        </Card.Subtitle>
-        <hr />
-        <div>
-          <Row>
-            <Col />
-            <Col style={colStyle}>
-              <span style={plusStyle} onClick={createLobby}>
-                +
-              </span>
-            </Col>
-            <Col />
-          </Row>
-        </div>
-      </Card.Body>
-    </Card>
+    <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
+      <h4>Create Lobby</h4>
+      <p>Click + to create a temporary lobby. Share the number with others.</p>
+      <button onClick={createLobby} style={{ fontSize: 24, padding: "6px 12px" }}>+</button>
+    </div>
   );
-};
-
-const cardStyle = {
-  marginTop: "20px",
-  minHeight: "25vh"
-};
-
-const colStyle = {
-  textAlign: "center"
-};
-
-const plusStyle = {
-  fontSize: "4rem",
-  color: "#ff6a6c",
-  cursor: "pointer"
-};
-
-CreateLobbyCard.propTypes = {
-  setLobbyNum: PropTypes.func.isRequired
 };
 
 export default CreateLobbyCard;
