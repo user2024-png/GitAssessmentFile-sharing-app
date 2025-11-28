@@ -1,57 +1,103 @@
-# File Sharing App <img src="./client/src/images/icon.png" width="48" />
+Real-Time File Sharing Web Application
 
-File Sharing App is a web app built with React.js and Node.js (express). It allows people to create lobbies and send files to each other.
+A Modern Socket-Based File Sharing Platform with React and Node.js
 
-It is an experimental project to work on sockets and streams on the back-end and to work on with react (Hooks) on the front-end.
+Project Overview
 
-Demo can be found at: [https://file-sharing-app-react.herokuapp.com/](https://file-sharing-app-react.herokuapp.com/)
+This File Sharing Application is a real-time web platform developed using React.js (Frontend) and Node.js with Express and Socket.io (Backend). It enables users to create or join private lobbies and instantly share files using real-time communication channels.
 
-The motivation, used technologies and objects are listed below.
+The project was originally forked from an older repository, but the backend and frontend have been significantly improved, debugged, and reconnected to ensure stable file transfers, functional sockets, and smooth user experience.
 
-## Back-End
+Features
 
-I tried to provide a simple back-end in order to focus more on streaming and socket communication. Because of that I did not implement any authentication or security system, but they can be added to future goals. I also tried to avoid from using lots of different libraries.
+Real-time Lobby Creation
+• Unique lobby IDs are generated dynamically
+• Multiple users can join the same lobby
 
-All libraries which have effects on implementation details can be listed as:
+Instant File Sharing
+• Files are uploaded and streamed to the server using Socket.io
+• Download links are generated instantly for all lobby members
 
-- Express
-- Socket.io
-- Socket.io-stream
+Improved Backend with Stable Socket Connections
+• Fixed socket disconnection and “Socket not connected” issues
+• Updated namespace logic for reliable room-based communication
 
-Rather than using plain old http.post requets with Form Data to send any kind of file, I've implemented streaming (one way, i will explain it later) to upload files to the server.
+Modern UI / UX
+• Developed using React.js and React-Bootstrap
+• Simple, responsive and minimal interface
 
-Besides these, uploaded files are hosted on the back-end for 30 minutes and gets deleted after that.
+File Management
+• Uploaded files are temporarily stored on the server
+• Auto-deletion after 30 minutes for security
 
-### One Way Streaming
+Tech Stack
 
-Currently, I use streams and send chunks of data with sockets to upload files to server, but when downloading I use some help from express' _res.download()_ rather than using streams to download the file again.
+Frontend
+• React.js (Hooks)
+• React-Bootstrap
+• Axios
+• Socket.io Client
+• socket.io-stream
 
-On the future versions, I will implement _two way streaming_ so we will able to download files at the same time we upload them.
+Backend
+• Node.js
+• Express.js
+• Socket.io
+• socket.io-stream
+• UUID for lobby generation
 
-### What could have been done more?
+Improvements Made in the Forked Project
 
-- Implementing Authentication (with JWT and HTTP Cookies)
-- Deploying to Google App Engine (Main platform I use)
-- Implementing _Two Way Streaming_
+Backend Enhancements
+• Fixed broken socket connection issues
+• Rewrote namespace logic for better lobby handling
+• Ensured backend properly receives and streams uploaded files
+• Connected backend API with the React frontend
+• Added error logging for debugging
 
-## Front-End
+Frontend Enhancements
+• Updated endpoints to match server
+• Fixed lobby join interface flow
+• Improved file upload component
+• Enhanced UI structure and responsiveness
 
-I've focused on using React Hooks with a clean and simple architecture. Although we require to use them on big and complex applications, I belive using state providers (Redux, Flux) for small and mid sized apps brings more confusion and abstraction than easiness. So I've tried to centralize my components in a way that I can use **one level** top-to-down prop passing for shared state.
+General Improvements
+• Cleaned unused code and warnings
+• Organized folder structure
+• Added comments for better clarity
+• Prepared the project for deployment
 
-All libraries which have effect on implementation details can be listed as:
+Installation and Setup
 
-- React with Hooks
-- React Bootstrap
-- Axios
-- Socket.io-client
-- Socekt.io-stream
+Step 1: Clone the project
+Clone the repository and open the project folder.
 
-### What could have been done more?
+Step 2: Install server dependencies
+Navigate to the server folder and install dependencies with npm install.
 
-- Implementing a State Provider (Redux with Hooks, When app grows)
-- Performance optimizations with React.Memo, React.lazy (and Suspense)
-- Error Handling with Error Boundaries
+Step 3: Install client dependencies
+Navigate to the client folder and install dependencies with npm install.
 
-## Questions & Feedback
+Step 4: Run Backend
+Start the backend server with node server.js.
 
-I would like to answer any questions raised based on this project and I would be so glad if you provide me any positive or negative feedback. You can contact me at <a href="mailto:mertbatmazoglu@gmail.com" target="_blank">mertbatmazoglu@gmail.com</a>
+Step 5: Run Frontend
+Start the React frontend using npm start inside the client folder.
+
+How It Works
+
+A user creates a lobby.
+
+A unique lobby ID is generated (for example: lobby-1764362801900).
+
+Other users enter the same ID to join the lobby.
+
+When a file is selected, it is streamed to the server and the server immediately sends download links to all connected clients in the lobby.
+
+Future Enhancements
+
+• Authentication (JWT + Cookies)
+• Two-way streaming for simultaneous upload and download
+• Deployment to cloud platforms (Vercel, Render, Google Cloud)
+• File encryption for security
+• Real-time chat system inside the lobby
